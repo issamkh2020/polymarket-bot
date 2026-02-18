@@ -1,0 +1,146 @@
+name: Polymarket Bot
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # Scan every 15 minutes
+  workflow_dispatch:          # Manual trigger from GitHub UI
+
+jobs:
+
+  # ─────────────────────────────────────────
+  #  JOB 1: Scan markets and place orders
+  # ─────────────────────────────────────────
+  scan:
+    name: Scan & Trade
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download purchased tracker
+        uses: actions/download-artifact@v4
+        with:
+          name: purchased-tracker
+        continue-on-error: true
+
+      - name: Download positions tracker
+        uses: actions/download-artifact@v4
+        with:
+          name: positions-tracker
+        continue-on-error: true
+
+      - name: Download daily spend tracker
+        uses: actions/download-artifact@v4
+        with:
+          name: daily-spend-tracker
+        continue-on-error: true
+
+      - name: Run scan
+        env:
+          PRIVATE_KEY:        ${{ secrets.PRIVATE_KEY }}
+          CLOB_API_KEY:       ${{ secrets.CLOB_API_KEY }}
+          CLOB_SECRET:        ${{ secrets.CLOB_SECRET }}
+          CLOB_PASSPHRASE:    ${{ secrets.CLOB_PASSPHRASE }}
+          TRADE_SIZE_USDC:    ${{ vars.TRADE_SIZE_USDC || '5' }}
+          MIN_PRICE:          ${{ vars.MIN_PRICE || '0.90' }}
+          MAX_PRICE:          ${{ vars.MAX_PRICE || '0.97' }}
+          MAX_HOURS_TO_CLOSE: ${{ vars.MAX_HOURS_TO_CLOSE || '48' }}
+          MIN_VOLUME_USDC:    ${{ vars.MIN_VOLUME_USDC || '5000' }}
+          DAILY_SPEND_CAP:    ${{ vars.DAILY_SPEND_CAP || '10' }}
+          MOMENTUM_DROP_PCT:  ${{ vars.MOMENTUM_DROP_PCT || '2.0' }}
+          DRY_RUN:            ${{ vars.DRY_RUN || 'true' }}
+        run: python bot.py
+
+      - name: Save purchased tracker
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: purchased-tracker
+          path: purchased.json
+          retention-days: 90
+          overwrite: true
+
+      - name: Save positions tracker
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: positions-tracker
+          path: positions.json
+          retention-days: 90
+          overwrite: true
+
+      - name: Save daily spend tracker
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: daily-spend-tracker
+          path: daily_spend.json
+          retention-days: 2
+          overwrite: true
+
+
+  # ─────────────────────────────────────────
+  #  JOB 2: Check resolutions + print P&L
+  #  Runs after every scan automatically
+  # ─────────────────────────────────────────
+  resolve:
+    name: Check Resolutions & P&L
+    runs-on: ubuntu-latest
+    needs: scan
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download positions tracker
+        uses: actions/download-artifact@v4
+        with:
+          name: positions-tracker
+        continue-on-error: true
+
+      - name: Download results tracker
+        uses: actions/download-artifact@v4
+        with:
+          name: results-tracker
+        continue-on-error: true
+
+      - name: Run resolution check
+        env:
+          TRADE_SIZE_USDC: ${{ vars.TRADE_SIZE_USDC || '5' }}
+          DRY_RUN:         ${{ vars.DRY_RUN || 'true' }}
+        run: python bot.py resolve
+
+      - name: Save positions tracker (updated statuses)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: positions-tracker
+          path: positions.json
+          retention-days: 90
+          overwrite: true
+
+      - name: Save results tracker
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-tracker
+          path: results.json
+          retention-days: 90
+          overwrite: true
