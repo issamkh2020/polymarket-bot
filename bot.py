@@ -330,6 +330,7 @@ def place_order(client, token_id: str, size_usdc: float) -> bool:
 # ══════════════════════════════════════════════════════════════
 
 def check_resolutions():
+    init_files()
     log.info("=" * 60)
     log.info("  RESOLUTION CHECK — P&L REPORT")
     log.info(f"  Time (UTC): {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
@@ -488,11 +489,24 @@ def check_resolutions():
     log.info("  Resolution check complete.")
 
 
+
+def init_files():
+    """Create all tracking files if they don't exist yet (prevents GitHub Actions upload errors)."""
+    if not os.path.exists(PURCHASED_FILE):
+        save_purchased(set())
+    if not os.path.exists(POSITIONS_FILE):
+        save_positions([])
+    if not os.path.exists(DAILY_SPEND_FILE):
+        save_daily_spend(0.0)
+    if not os.path.exists(RESULTS_FILE):
+        save_results([])
+
 # ══════════════════════════════════════════════════════════════
 #  MAIN SCAN
 # ══════════════════════════════════════════════════════════════
 
 def main():
+    init_files()
     log.info("=" * 60)
     log.info("  POLYMARKET BOT — SCAN STARTING")
     log.info(f"  Time (UTC):   {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
