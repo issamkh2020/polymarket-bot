@@ -1,0 +1,75 @@
+name: Polymarket Bot
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+
+  scan:
+    name: Scan & Trade
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download trackers (if they exist)
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: bot.yml
+          name: trackers
+          if_no_artifact_found: ignore
+        continue-on-error: true
+
+      - name: Initialize missing files
+        run: |
+          [ -f purchased.json ]   || echo '{"purchased":[]}' > purchased.json
+          [ -f positions.json ]   || echo '{"positions":[]}' > positions.json
+          [ -f daily_spend.json ] || echo '{"date":"","spent":0}' > daily_spend.json
+          [ -f results.json ]     || echo '{"results":[]}' > results.json
+
+      - name: Run scan
+        env:
+          PRIVATE_KEY:        ${{ secrets.PRIVATE_KEY }}
+          CLOB_API_KEY:       ${{ secrets.CLOB_API_KEY }}
+          CLOB_SECRET:        ${{ secrets.CLOB_SECRET }}
+          CLOB_PASSPHRASE:    ${{ secrets.CLOB_PASSPHRASE }}
+          TRADE_SIZE_USDC:    ${{ vars.TRADE_SIZE_USDC || '10' }}
+          MIN_PRICE:          ${{ vars.MIN_PRICE || '0.90' }}
+          MAX_PRICE:          ${{ vars.MAX_PRICE || '0.97' }}
+          MAX_HOURS_TO_CLOSE: ${{ vars.MAX_HOURS_TO_CLOSE || '48' }}
+          MIN_VOLUME_USDC:    ${{ vars.MIN_VOLUME_USDC || '5000' }}
+          DAILY_SPEND_CAP:    ${{ vars.DAILY_SPEND_CAP || '20' }}
+          MOMENTUM_DROP_PCT:  ${{ vars.MOMENTUM_DROP_PCT || '2.0' }}
+          DRY_RUN:            ${{ vars.DRY_RUN || 'true' }}
+        run: python bot.py
+
+      - name: Run resolution check
+        env:
+          TRADE_SIZE_USDC: ${{ vars.TRADE_SIZE_USDC || '10' }}
+          DRY_RUN:         ${{ vars.DRY_RUN || 'true' }}
+        run: python bot.py resolve
+
+      - name: Save all trackers
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trackers
+          path: |
+            purchased.json
+            positions.json
+            daily_spend.json
+            results.json
+          retention-days: 90
+          overwrite: true
+          if-no-files-found: ignore
