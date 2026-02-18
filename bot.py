@@ -163,7 +163,11 @@ def parse_end_date(market: dict):
     if not end_str:
         return None
     try:
-        return datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(end_str.replace("Z", "+00:00"))
+        # Always ensure timezone-aware (some markets return naive datetimes)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     except Exception:
         return None
 
